@@ -4,8 +4,8 @@
 四川大学URP课程容量查询工具 (独立版)
 SCU URP Course Capacity Query Tool (Standalone)
 
-功能：查询四川大学URP教务系统中各课程的容量信息
-作者：基于 SCU-URP-Helper 项目改编
+功能：查询四川大学各课程的信息
+作者：@Elessar2077 with Codex
 版本：1.1.0
 """
 
