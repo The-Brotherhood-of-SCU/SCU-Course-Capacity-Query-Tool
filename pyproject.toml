@@ -1,0 +1,23 @@
+[project]
+name = "scu-course-capacity-query"
+version = "1.0.0"
+description = "Query SCU URP course capacity and remaining seats from the command line."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31.0",
+    "ddddocr>=1.4.11",
+    "onnxruntime>=1.15.0",
+    "pillow>=10.0.0",
+    "numpy>=1.24.0",
+]
+
+[project.scripts]
+query = "run:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["run"]
