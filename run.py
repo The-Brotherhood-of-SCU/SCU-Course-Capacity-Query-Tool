@@ -28,6 +28,7 @@ CAPTCHA_URL = "http://zhjw.scu.edu.cn/img/captcha.jpg"
 # 选课页面（仅开放期间可用）
 COURSE_SELECT_URL = "http://zhjw.scu.edu.cn/student/courseSelect/courseSelect/index"
 FREE_COURSE_SELECT_URL = "http://zhjw.scu.edu.cn/student/courseSelect/freeCourse/courseList"
+VIEW_XK_COUNT_URL = "http://zhjw.scu.edu.cn/student/courseSelect/selectCourse/viewXkCount"
 
 # 课程课表查询页面（常年可用）
 COURSE_SCHEDULE_URL = "http://zhjw.scu.edu.cn/student/integratedQuery/course/courseSchdule/index"
@@ -451,7 +452,75 @@ def query_course_capacity_select(session: requests.Session, keyword: str, search
         print_log("课程列表数据类型错误。", "ERROR")
         return []
 
+    enrich_selected_counts(session, class_list)
     return class_list
+
+
+def query_selected_count(session: requests.Session, zxjxjhh: str, kch: str, kxh: str) -> int | None:
+    """
+    Query the selected-student count shown by the "点击查看" link on the free-course page.
+    """
+    if not zxjxjhh or not kch or not kxh:
+        return None
+
+    headers = HTTP_HEAD.copy()
+    headers.update({
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Origin": "http://zhjw.scu.edu.cn",
+        "Referer": "http://zhjw.scu.edu.cn/student/courseSelect/freeCourse/index"
+    })
+
+    url = f"{VIEW_XK_COUNT_URL}/{zxjxjhh}/{kch}/{kxh}"
+    try:
+        res = session.post(url, data="", headers=headers)
+    except requests.RequestException as exc:
+        print_log(f"查询已选人数失败: {kch}_{kxh} ({exc})", "DEBUG")
+        return None
+
+    if res.status_code != 200:
+        print_log(f"查询已选人数失败: {kch}_{kxh}，状态码: {res.status_code}", "DEBUG")
+        return None
+
+    raw_text = (res.text or "").strip()
+    if not raw_text:
+        return None
+
+    try:
+        value = res.json()
+    except json.JSONDecodeError:
+        value = raw_text
+
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        print_log(f"已选人数响应无法解析: {kch}_{kxh} -> {raw_text[:80]}", "DEBUG")
+        return None
+
+
+def enrich_selected_counts(session: requests.Session, courses: list) -> None:
+    """
+    Add yxrs (selected-student count) to free-course records.
+    The course list contains one row per time slice, so cache by term/course/sequence.
+    """
+    if not courses:
+        return
+
+    cache = {}
+    for course in courses:
+        if not isinstance(course, dict):
+            continue
+
+        key = (course.get("zxjxjhh"), course.get("kch"), course.get("kxh"))
+        if not all(key):
+            continue
+
+        if key not in cache:
+            cache[key] = query_selected_count(session, *key)
+
+        if cache[key] is not None:
+            course["yxrs"] = cache[key]
 
 
 def normalize_course_records(courses: list) -> list:
@@ -679,17 +748,20 @@ def display_course_capacity(courses: list) -> None:
 
             if remaining is None:
                 remaining_str = "-"
-                selected_str = "-"
             else:
                 try:
                     remaining = int(remaining)
                     remaining_str = str(remaining)
-                    if total_capacity_str != "-":
-                        selected_str = str(int(total_capacity_str) - remaining)
-                    else:
-                        selected_str = "-"
                 except (ValueError, TypeError):
                     remaining_str = "-"
+
+            selected_count = course.get('yxrs')
+            if selected_count is None:
+                selected_str = "-"
+            else:
+                try:
+                    selected_str = str(int(selected_count))
+                except (ValueError, TypeError):
                     selected_str = "-"
 
             # 截断过长的文本
@@ -730,6 +802,7 @@ def display_course_detail(course: dict) -> None:
     print(f"学时: {course.get('xs', 'N/A')}")
     print(f"课容量: {course.get('bkskrl', 'N/A')}")
     print(f"课余量: {course.get('bkskyl', 'N/A')}")
+    print(f"已选人数: {course.get('yxrs', 'N/A')}")
     print(f"校区: {course.get('kkxqm', 'N/A')}")
     print(f"教学楼: {course.get('jxlm', 'N/A')}")
     print(f"教室: {course.get('jasm', 'N/A')}")
